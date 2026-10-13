@@ -1,0 +1,63 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Find Tasks | QuickVolunteer</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <header>
+        <h1>QuickVolunteer</h1>
+        <p>Small Tasks. Big Impact.</p>
+    </header>
+
+    <main>
+        <h2>Available Volunteering Tasks</h2>
+
+        <div class="task-grid">
+            {% for task in tasks %}
+            <article class="task-card">
+
+                <span class="category">
+                    {{ task.category_name }}
+                </span>
+
+                <h3>{{ task.title }}</h3>
+
+                <p>{{ task.description }}</p>
+
+                <p>
+                    <strong>Duration:</strong>
+                    {{ task.estimated_minutes }} minutes
+                </p>
+
+                <p>
+                    <strong>Mode:</strong>
+                    {{ task.delivery_mode | replace('_', ' ') | title }}
+                </p>
+
+                <p>
+                    <strong>Location:</strong>
+                    {{ task.location_text or 'Remote' }}
+                </p>
+
+                <button type="button" disabled>
+                    Apply (coming soon)
+                </button>
+
+            </article>
+            {% else %}
+            <p>No volunteering tasks are currently available.</p>
+            {% endfor %}
+        </div>
+    </main>
+
+</body>
+</html>

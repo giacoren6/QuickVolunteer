@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# QuickVolunteer SQLite database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+
