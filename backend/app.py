@@ -1,3 +1,4 @@
+from task_routes import task_bp
 import os
 from auth import auth_bp
 from flask import Flask, jsonify, render_template
@@ -23,6 +24,7 @@ if not app.config["SECRET_KEY"]:
     raise RuntimeError("Set FLASK_SECRET_KEY before starting Flask")
 
 app.register_blueprint(auth_bp)
+app.register_blueprint(task_bp)
 
 DB_PATH = BASE_DIR / "database" / "quickvolunteer.db"
 

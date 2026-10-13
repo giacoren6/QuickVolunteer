@@ -184,3 +184,58 @@ def current_user():
 def logout():
     session.clear()
     return jsonify({"message": "Logged out successfully"}), 200
+
+
+
+# ==========================================
+# ROLE-BASED AUTHORISATION
+# ==========================================
+
+def roles_required(*allowed_roles):
+    def decorator(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+
+            user_id = session.get("user_id")
+
+            if user_id is None:
+                return jsonify({
+                    "error": "Login required"
+                }), 401
+
+            connection = get_db()
+
+            try:
+                rows = connection.execute("""
+                    SELECT r.role_name
+                    FROM user_roles AS ur
+                    JOIN roles AS r
+                        ON ur.role_id = r.role_id
+                    JOIN users AS u
+                        ON ur.user_id = u.user_id
+                    WHERE u.user_id = ?
+                      AND u.account_status = 'active'
+                """, (user_id,)).fetchall()
+
+                user_roles = {
+                    row["role_name"] for row in rows
+                }
+
+                if not user_roles:
+                    return jsonify({
+                        "error": "Account inactive or no roles assigned"
+                    }), 403
+
+                if not user_roles.intersection(allowed_roles):
+                    return jsonify({
+                        "error": "Permission denied"
+                    }), 403
+
+                return function(*args, **kwargs)
+
+            finally:
+                connection.close()
+
+        return wrapper
+
+    return decorator
