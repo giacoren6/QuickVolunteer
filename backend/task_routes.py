@@ -388,3 +388,4 @@ def complete_task(task_id):
 
     finally:
         connection.close()
+        
