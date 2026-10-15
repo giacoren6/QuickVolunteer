@@ -27,15 +27,47 @@ def get_db():
     return connection
 
 
+
+# ==========================================
+# SECURE LOGIN REQUIRED DECORATOR
+# ==========================================
+
 def login_required(function):
     @wraps(function)
     def wrapper(*args, **kwargs):
-        if "user_id" not in session:
-            return jsonify({"error": "Login required"}), 401
+
+        user_id = session.get("user_id")
+
+        # Check whether the user is logged in
+        if user_id is None:
+            return jsonify({
+                "error": "Login required"
+            }), 401
+
+        connection = get_db()
+
+        try:
+            # Check the user still exists and is active
+            user = connection.execute("""
+                SELECT user_id, account_status
+                FROM users
+                WHERE user_id = ?
+            """, (user_id,)).fetchone()
+
+            if user is None or user["account_status"] != "active":
+                session.clear()
+
+                return jsonify({
+                    "error": "Session is no longer valid"
+                }), 401
+
+        finally:
+            connection.close()
 
         return function(*args, **kwargs)
 
     return wrapper
+
 
 
 @auth_bp.route("/api/register", methods=["POST"])

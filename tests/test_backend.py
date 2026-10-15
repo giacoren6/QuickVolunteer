@@ -58,6 +58,49 @@ class QuickVolunteerTests(unittest.TestCase):
 
         self.client = app.test_client()
 
+        # Obtain a CSRF token for this test session
+        response = self.client.get("/api/csrf-token")
+        self.csrf_token = response.get_json()["csrf_token"]
+
+        # Automatically attach the token to modifying requests
+        original_post = self.client.post
+        original_patch = self.client.patch
+
+        
+        def csrf_post(*args, **kwargs):
+            headers = dict(kwargs.pop("headers", {}) or {})
+
+            # Refresh token from the current Flask session
+            token_response = self.client.get("/api/csrf-token")
+            token = token_response.get_json()["csrf_token"]
+
+            headers["X-CSRFToken"] = token
+
+            return original_post(
+                *args,
+                headers=headers,
+                **kwargs
+            )
+
+        def csrf_patch(*args, **kwargs):
+            headers = dict(kwargs.pop("headers", {}) or {})
+
+            # Refresh token from the current Flask session
+            token_response = self.client.get("/api/csrf-token")
+            token = token_response.get_json()["csrf_token"]
+
+            headers["X-CSRFToken"] = token
+
+            return original_patch(
+                *args,
+                headers=headers,
+                **kwargs
+            )
+
+        self.client.post = csrf_post
+        self.client.patch = csrf_patch
+
+
     def tearDown(self):
         # Close the test client's session after each test
         self.client = None
@@ -224,6 +267,96 @@ class QuickVolunteerTests(unittest.TestCase):
             json={"decision": "accepted"}
         )
         self.assertEqual(response.status_code, 403)
+
+
+    
+    def test_13_suspended_user_session_blocked(self):
+        # Register and log in a volunteer
+        self.register_user("suspended@test.com", "volunteer")
+        self.login_user("suspended@test.com")
+
+        # Simulate an administrator suspending the account
+        connection = sqlite3.connect(TEST_DB)
+
+        connection.execute("""
+            UPDATE users
+            SET account_status = 'suspended'
+            WHERE email = ?
+        """, ("suspended@test.com",))
+
+        connection.commit()
+        connection.close()
+
+        # The existing login session should no longer work
+        response = self.client.get("/api/me")
+
+        self.assertEqual(response.status_code, 401)
+
+
+    
+    # ==========================================
+    # ADDITIONAL SECURITY TESTS
+    # ==========================================
+
+    def test_14_guest_cannot_create_task(self):
+        # No user is logged in
+        response = self.create_task()
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_15_guest_cannot_apply_for_task(self):
+        # No user is logged in
+        response = self.client.post("/api/tasks/1/apply")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_16_other_user_cannot_complete_task(self):
+        # Create a task and volunteer application
+        task_id, application_id = self.prepare_application()
+
+        # The real owner accepts the application
+        self.login_user("seeker@test.com")
+
+        accepted = self.client.patch(
+            f"/api/applications/{application_id}/decision",
+            json={"decision": "accepted"}
+        )
+
+        self.assertEqual(accepted.status_code, 200)
+
+        # Another Help Seeker logs in
+        self.register_user("other@test.com", "help_seeker")
+        self.login_user("other@test.com")
+
+        # They attempt to complete someone else's task
+        response = self.client.patch(
+            f"/api/tasks/{task_id}/complete"
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+
+    
+    def test_17_missing_csrf_token_rejected(self):
+        # Send a request without the CSRF helper
+        response = self.client.open(
+            "/api/register",
+            method="POST",
+            json={
+                "first_name": "Test",
+                "last_name": "User",
+                "email": "csrf@test.com",
+                "password": "TestingPassword123!",
+                "role": "volunteer"
+            }
+        )
+
+        # Flask should reject the request
+        self.assertEqual(response.status_code, 400)
+
+
+
 
 
 if __name__ == "__main__":

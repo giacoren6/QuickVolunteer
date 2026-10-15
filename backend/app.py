@@ -1,3 +1,4 @@
+from flask_wtf.csrf import CSRFProtect
 from task_routes import task_bp
 import os
 from auth import auth_bp
@@ -25,6 +26,7 @@ if not app.config["SECRET_KEY"]:
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(task_bp)
+csrf = CSRFProtect(app)
 
 DB_PATH = Path(
     os.environ.get(
@@ -81,6 +83,17 @@ def tasks_page():
 @app.route("/api/tasks")
 def tasks_api():
     return jsonify(fetch_open_tasks())
+
+
+
+from flask_wtf.csrf import generate_csrf
+
+@app.route("/api/csrf-token", methods=["GET"])
+def csrf_token():
+    return jsonify({
+        "csrf_token": generate_csrf()
+    })
+
 
 
 if __name__ == "__main__":
