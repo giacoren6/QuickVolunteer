@@ -9,8 +9,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 auth_bp = Blueprint("auth", __name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "database" / "quickvolunteer.db"
+import os
 
+DB_PATH = Path(
+    os.environ.get(
+        "QUICKVOLUNTEER_DB_PATH",
+        str(BASE_DIR / "database" / "quickvolunteer.db")
+    )
+)
 ALLOWED_ROLES = {"volunteer", "help_seeker", "organisation"}
 
 

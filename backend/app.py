@@ -26,8 +26,12 @@ if not app.config["SECRET_KEY"]:
 app.register_blueprint(auth_bp)
 app.register_blueprint(task_bp)
 
-DB_PATH = BASE_DIR / "database" / "quickvolunteer.db"
-
+DB_PATH = Path(
+    os.environ.get(
+        "QUICKVOLUNTEER_DB_PATH",
+        str(BASE_DIR / "database" / "quickvolunteer.db")
+    )
+)
 
 def get_db_connection():
     connection = sqlite3.connect(DB_PATH)
