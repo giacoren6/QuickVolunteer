@@ -512,7 +512,6 @@ The following features are not yet implemented:
 - Reviews and ratings
 - Messaging
 - Notifications
-- Public task-category listing endpoint
 
 The frontend should not depend on these features until
 the backend endpoints have been implemented and tested.
@@ -536,3 +535,48 @@ Categories are ordered alphabetically by category_name.
 Used by the frontend when displaying the
 category dropdown for task creation.
 
+
+## PATCH /api/tasks/<task_id>/cancel
+
+Cancels an existing task.
+
+Authentication: Required.
+Allowed account types: help_seeker or both.
+Only the task creator can cancel the task.
+
+CSRF: Required. Include the X-CSRFToken header
+and the authenticated Flask session cookie.
+
+Request body: Not required.
+
+Allowed task statuses:
+- open
+- filled
+
+Successful cancellation:
+- Changes task status to closed.
+- Rejects pending volunteer applications.
+- Removes the task from the public GET /api/tasks list.
+- Preserves the task in the creator's task history.
+- Preserves accepted applications for historical purposes.
+
+Success: HTTP 200
+
+Example response:
+{
+  "message": "Task cancelled successfully",
+  "task_id": 4,
+  "status": "closed"
+}
+
+Possible errors:
+- 401: Not authenticated
+- 403: Insufficient permissions or not the task creator
+- 404: Task not found
+- 409: Task cannot be cancelled in its current status
+- 400: Missing or invalid CSRF token
+
+Note: For a filled task, the accepted application
+remains accepted, but the task status becomes closed.
+The volunteer dashboard should check task_status
+before displaying completion actions.

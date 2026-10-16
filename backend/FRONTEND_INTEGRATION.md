@@ -249,3 +249,42 @@ Include the CSRF token.
 5. POST and PATCH requests require X-CSRFToken.
 6. Display backend error messages appropriately.
 8. See backend/API_DOCUMENTATION.md for API details.
+
+## 13. Cancel a task
+
+Endpoint: PATCH /api/tasks/<task_id>/cancel
+
+Authentication: Required.
+Allowed account types: help_seeker and both.
+Only the task creator can cancel their task.
+
+A task can be cancelled when its status is:
+- open
+- filled
+
+Requirements:
+- Use the authenticated Flask session cookie.
+- Include the X-CSRFToken header.
+- No JSON request body is required.
+
+Successful response: HTTP 200
+
+{
+  "message": "Task cancelled successfully",
+  "task_id": 4,
+  "status": "closed"
+}
+
+Frontend instructions:
+- Show a Cancel Task button for the creator's open or filled tasks.
+- Ask the user to confirm before cancelling.
+- Send a PATCH request to the cancellation endpoint.
+- Refresh the dashboard after successful cancellation.
+- Hide completion actions when task_status is closed.
+- Display API error messages when cancellation fails.
+
+Pending applications are rejected automatically.
+Previously accepted applications remain in the database
+for history, but their associated task becomes closed.
+
+See backend/API_DOCUMENTATION.md for additional details.

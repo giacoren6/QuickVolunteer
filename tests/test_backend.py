@@ -480,6 +480,129 @@ class QuickVolunteerTests(unittest.TestCase):
             self.assertIsInstance(category["category_id"], int)
             self.assertIsInstance(category["category_name"], str)
 
+    
+    def test_33_creator_can_cancel_open_task(self):
+        self.register_user("seeker@test.com", "help_seeker")
+        self.login_user("seeker@test.com")
+
+        task_id = self.create_task().get_json()["task_id"]
+
+        response = self.patch(f"/api/tasks/{task_id}/cancel")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["status"], "closed")
+        self.assertEqual(self.task_status(task_id), "closed")
+
+    def test_34_other_user_cannot_cancel_task(self):
+        self.register_user("seeker@test.com", "help_seeker")
+        self.register_user("other@test.com", "help_seeker")
+
+        self.login_user("seeker@test.com")
+        task_id = self.create_task().get_json()["task_id"]
+
+        self.login_user("other@test.com")
+        response = self.patch(f"/api/tasks/{task_id}/cancel")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.task_status(task_id), "open")
+
+    def test_35_completed_task_cannot_be_cancelled(self):
+        task_id, application_id = self.prepare_application()
+        self.accept_application(application_id)
+
+        self.login_user("volunteer@test.com")
+        self.assertEqual(
+            self.patch(f"/api/tasks/{task_id}/complete").status_code,
+            200
+        )
+
+        self.login_user("seeker@test.com")
+        self.assertEqual(
+            self.patch(f"/api/tasks/{task_id}/complete").status_code,
+            200
+        )
+
+        response = self.patch(f"/api/tasks/{task_id}/cancel")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.task_status(task_id), "completed")
+
+    def test_36_cancelled_task_not_publicly_listed(self):
+        self.register_user("seeker@test.com", "help_seeker")
+        self.login_user("seeker@test.com")
+
+        task_id = self.create_task().get_json()["task_id"]
+
+        self.assertEqual(
+            self.patch(f"/api/tasks/{task_id}/cancel").status_code,
+            200
+        )
+
+        response = self.client.get("/api/tasks")
+
+        self.assertEqual(response.status_code, 200)
+        public_task_ids = [
+            task["task_id"] for task in response.get_json()
+        ]
+        self.assertNotIn(task_id, public_task_ids)
+
+    def test_37_cancellation_rejects_pending_application(self):
+        task_id, application_id = self.prepare_application()
+
+        self.login_user("seeker@test.com")
+        response = self.patch(f"/api/tasks/{task_id}/cancel")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.task_status(task_id), "closed")
+
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        try:
+            cursor.execute("""
+                SELECT status
+                FROM task_applications
+                WHERE application_id = %s
+            """, (application_id,))
+
+            application = cursor.fetchone()
+            self.assertEqual(application["status"], "rejected")
+
+        finally:
+            cursor.close()
+            connection.close()
+
+    
+    def test_38_creator_can_cancel_filled_task(self):
+        task_id, application_id = self.prepare_application()
+
+        self.accept_application(application_id)
+
+        self.assertEqual(self.task_status(task_id), "filled")
+
+        response = self.patch(f"/api/tasks/{task_id}/cancel")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["status"], "closed")
+        self.assertEqual(self.task_status(task_id), "closed")
+
+        # Volunteer should see that the task is closed.
+        self.login_user("volunteer@test.com")
+
+        response = self.client.get("/api/my-applications")
+
+        self.assertEqual(response.status_code, 200)
+
+        application = next(
+            item for item in response.get_json()["applications"]
+            if item["application_id"] == application_id
+        )
+
+        self.assertEqual(application["task_status"], "closed")
+        self.assertEqual(application["application_status"], "accepted")
+
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

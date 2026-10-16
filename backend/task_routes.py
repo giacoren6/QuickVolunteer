@@ -562,7 +562,6 @@ def complete_task(task_id):
 
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
-
     try:
         connection.start_transaction()
 
@@ -669,6 +668,74 @@ def complete_task(task_id):
                 confirmations["help_seeker_completed_at"] is not None
             )
         }), 200
+
+    except mysql.connector.Error:
+        connection.rollback()
+        raise
+
+    finally:
+        cursor.close()
+        connection.close()
+
+    
+
+
+# ==========================================
+# CANCEL TASK - HELP SEEKER
+# ==========================================
+
+@task_bp.route("/api/tasks/<int:task_id>/cancel", methods=["PATCH"])
+@roles_required("help_seeker")
+def cancel_task(task_id):
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        connection.start_transaction()
+
+        cursor.execute("""
+            SELECT task_id, creator_id, status
+            FROM tasks
+            WHERE task_id = %s
+            FOR UPDATE
+        """, (task_id,))
+
+        task = cursor.fetchone()
+
+        if task is None:
+            connection.rollback()
+            return jsonify({"error": "Task not found"}), 404
+
+        if task["creator_id"] != session["user_id"]:
+            connection.rollback()
+            return jsonify({"error": "Permission denied"}), 403
+
+        if task["status"] not in ("open", "filled"):
+            connection.rollback()
+            return jsonify({
+                "error": "Task cannot be cancelled"
+            }), 409
+
+        cursor.execute("""
+            UPDATE tasks
+            SET status = 'closed'
+            WHERE task_id = %s
+        """, (task_id,))
+
+        cursor.execute("""
+            UPDATE task_applications
+            SET status = 'rejected'
+            WHERE task_id = %s
+              AND status = 'pending'
+        """, (task_id,))
+
+        connection.commit()
+
+        return jsonify({
+            "message": "Task cancelled successfully",
+            "task_id": task_id,
+            "status": "closed"
+               }), 200
 
     except mysql.connector.Error:
         connection.rollback()
