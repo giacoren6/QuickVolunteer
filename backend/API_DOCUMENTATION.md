@@ -516,3 +516,23 @@ The following features are not yet implemented:
 
 The frontend should not depend on these features until
 the backend endpoints have been implemented and tested.
+
+
+
+## GET /api/categories
+
+Returns all task categories.
+
+Authentication: Not required.
+
+Success: HTTP 200
+
+Response: JSON array containing:
+- category_id
+- category_name
+
+Categories are ordered alphabetically by category_name.
+
+Used by the frontend when displaying the
+category dropdown for task creation.
+

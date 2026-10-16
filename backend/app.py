@@ -106,6 +106,33 @@ def tasks_api():
     return jsonify(fetch_open_tasks())
 
 
+
+# ==========================================
+# REST API - GET TASK CATEGORIES
+# ==========================================
+
+@app.route("/api/categories", methods=["GET"])
+def categories_api():
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT
+                category_id,
+                category_name
+            FROM task_categories
+            ORDER BY category_name
+        """)
+
+        categories = cursor.fetchall()
+        return jsonify(categories), 200
+
+    finally:
+        cursor.close()
+        connection.close()
+
+
 # ==========================================
 # CSRF TOKEN ENDPOINT
 # ==========================================

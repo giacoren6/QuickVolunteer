@@ -455,6 +455,30 @@ class QuickVolunteerTests(unittest.TestCase):
         response = self.client.get("/api/my-applications")
 
         self.assertEqual(response.status_code, 401)
+    
+    def test_30_categories_endpoint_returns_200(self):
+        response = self.client.get("/api/categories")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_31_categories_endpoint_returns_list(self):
+        response = self.client.get("/api/categories")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.get_json(), list)
+
+    def test_32_categories_have_correct_fields(self):
+        response = self.client.get("/api/categories")
+
+        self.assertEqual(response.status_code, 200)
+
+        categories = response.get_json()
+
+        for category in categories:
+            self.assertIn("category_id", category)
+            self.assertIn("category_name", category)
+            self.assertIsInstance(category["category_id"], int)
+            self.assertIsInstance(category["category_name"], str)
 
 
 if __name__ == "__main__":
