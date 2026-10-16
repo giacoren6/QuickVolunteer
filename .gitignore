@@ -226,3 +226,6 @@ __marimo__/
 *.db-shm
 
 
+# QuickVolunteer environment security
+.env.*
+!.env.example
