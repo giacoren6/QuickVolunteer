@@ -33,6 +33,122 @@ def volunteer_permissions():
     }), 200
 
 
+
+# ==========================================
+# MY TASKS - HELP SEEKER DASHBOARD
+# ==========================================
+
+@task_bp.route("/api/my-tasks", methods=["GET"])
+@roles_required("help_seeker")
+def my_tasks():
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT
+                t.task_id,
+                t.title,
+                t.description,
+                t.location_text,
+                t.delivery_mode,
+                t.estimated_minutes,
+                t.deadline_at,
+                t.status,
+                t.created_at,
+                c.category_name
+            FROM tasks AS t
+            JOIN task_categories AS c
+                ON t.category_id = c.category_id
+            WHERE t.creator_id = %s
+            ORDER BY t.created_at DESC, t.task_id DESC
+        """, (session["user_id"],))
+
+        tasks = cursor.fetchall()
+
+        for task in tasks:
+            if task["deadline_at"] is not None:
+                task["deadline_at"] = (
+                    task["deadline_at"].isoformat()
+                )
+
+            if task["created_at"] is not None:
+                task["created_at"] = (
+                    task["created_at"].isoformat()
+                )
+
+        return jsonify({
+            "tasks": tasks
+        }), 200
+
+    finally:
+        cursor.close()
+        connection.close()
+
+
+
+# ==========================================
+# MY APPLICATIONS - VOLUNTEER DASHBOARD
+# ==========================================
+
+@task_bp.route("/api/my-applications", methods=["GET"])
+@roles_required("volunteer")
+def my_applications():
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT
+                a.application_id,
+                a.task_id,
+                a.status AS application_status,
+                a.applied_at,
+                a.accepted_at,
+                a.volunteer_completed_at,
+                a.help_seeker_completed_at,
+                t.title,
+                t.description,
+                t.delivery_mode,
+                t.location_text,
+                t.estimated_minutes,
+                t.deadline_at,
+                t.status AS task_status,
+                c.category_name
+            FROM task_applications AS a
+            JOIN tasks AS t
+                ON a.task_id = t.task_id
+            JOIN task_categories AS c
+                ON t.category_id = c.category_id
+            WHERE a.volunteer_id = %s
+            ORDER BY a.applied_at DESC, a.application_id DESC
+        """, (session["user_id"],))
+
+        applications = cursor.fetchall()
+
+        date_fields = (
+            "applied_at",
+            "accepted_at",
+            "volunteer_completed_at",
+            "help_seeker_completed_at",
+            "deadline_at"
+        )
+
+        for application in applications:
+            for field in date_fields:
+                value = application[field]
+                if value is not None:
+                    application[field] = value.isoformat()
+
+        return jsonify({
+            "applications": applications
+        }), 200
+
+    finally:
+        cursor.close()
+        connection.close()
+
+
 # ==========================================
 # CREATE A TASK
 # ==========================================

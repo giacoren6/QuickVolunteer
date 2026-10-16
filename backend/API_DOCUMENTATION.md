@@ -178,6 +178,95 @@ Returns the list of open tasks.
 The exact response fields should be checked against
 backend/app.py before implementing frontend parsing.
 
+
+
+## My Tasks — Help Seeker Dashboard
+
+GET /api/my-tasks
+
+Requires authentication and a help_seeker or both account.
+
+Returns only tasks created by the logged-in user.
+
+Success: HTTP 200
+
+Example response:
+
+{
+  "tasks": [
+    {
+      "task_id": 1,
+      "title": "Help with shopping",
+      "description": "Collect groceries from a local shop.",
+      "location_text": "Stratford",
+      "delivery_mode": "in_person",
+      "estimated_minutes": 30,
+      "deadline_at": "2030-12-01T15:00:00",
+      "status": "open",
+      "created_at": "2026-10-16T13:30:00",
+      "category_name": "Community Support"
+    }
+  ]
+}
+
+Possible errors:
+- 401: Not logged in
+- 403: Insufficient permissions
+
+Tasks may have these statuses:
+- open
+- filled
+- completed
+- closed
+
+## My Applications — Volunteer Dashboard
+
+GET /api/my-applications
+
+Requires authentication and a volunteer or both account.
+
+Returns only applications submitted by the logged-in user.
+
+Success: HTTP 200
+
+Example response:
+
+{
+  "applications": [
+    {
+      "application_id": 5,
+      "task_id": 1,
+      "application_status": "pending",
+      "applied_at": "2026-10-16T14:00:00",
+      "accepted_at": null,
+      "volunteer_completed_at": null,
+      "help_seeker_completed_at": null,
+      "title": "Help with shopping",
+      "description": "Collect groceries from a local shop.",
+      "delivery_mode": "in_person",
+      "location_text": "Stratford",
+      "estimated_minutes": 30,
+      "deadline_at": "2030-12-01T15:00:00",
+      "task_status": "open",
+      "category_name": "Community Support"
+    }
+  ]
+}
+
+Possible errors:
+- 401: Not logged in
+- 403: Insufficient permissions
+
+Application statuses:
+- pending
+- accepted
+- rejected
+- completed
+
+An empty list is returned when the user has no
+tasks or applications.
+
+
 ## 10. Create a Task
 
 POST /api/tasks

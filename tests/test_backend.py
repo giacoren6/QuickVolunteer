@@ -373,6 +373,89 @@ class QuickVolunteerTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
 
+    
+    def test_24_help_seeker_can_view_own_tasks(self):
+        self.register_user("seeker@test.com", "help_seeker")
+        self.login_user("seeker@test.com")
+
+        created = self.create_task()
+        self.assertEqual(created.status_code, 201)
+
+        task_id = created.get_json()["task_id"]
+
+        response = self.client.get("/api/my-tasks")
+
+        self.assertEqual(response.status_code, 200)
+
+        tasks = response.get_json()["tasks"]
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]["task_id"], task_id)
+        self.assertEqual(tasks[0]["status"], "open")
+
+    def test_25_help_seeker_cannot_view_other_users_tasks(self):
+        self.register_user("seeker@test.com", "help_seeker")
+        self.register_user("other@test.com", "help_seeker")
+
+        self.login_user("seeker@test.com")
+        created = self.create_task()
+        self.assertEqual(created.status_code, 201)
+
+        self.login_user("other@test.com")
+        response = self.client.get("/api/my-tasks")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["tasks"], [])
+
+    def test_26_guest_cannot_view_my_tasks(self):
+        response = self.client.get("/api/my-tasks")
+
+        self.assertEqual(response.status_code, 401)
+
+    
+    def test_27_volunteer_can_view_own_applications(self):
+        task_id, application_id = self.prepare_application()
+
+        # prepare_application leaves the volunteer logged in.
+        response = self.client.get("/api/my-applications")
+
+        self.assertEqual(response.status_code, 200)
+
+        applications = response.get_json()["applications"]
+
+        self.assertEqual(len(applications), 1)
+        self.assertEqual(
+            applications[0]["application_id"],
+            application_id
+        )
+        self.assertEqual(applications[0]["task_id"], task_id)
+        self.assertEqual(
+            applications[0]["application_status"],
+            "pending"
+        )
+        self.assertEqual(
+            applications[0]["task_status"],
+            "open"
+        )
+
+    def test_28_volunteer_cannot_view_other_applications(self):
+        self.prepare_application()
+
+        self.register_user("other@test.com", "volunteer")
+        self.login_user("other@test.com")
+
+        response = self.client.get("/api/my-applications")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json()["applications"],
+            []
+        )
+
+    def test_29_guest_cannot_view_my_applications(self):
+        response = self.client.get("/api/my-applications")
+
+        self.assertEqual(response.status_code, 401)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
