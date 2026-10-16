@@ -236,6 +236,74 @@ def apply_for_task(task_id):
 
 
 # ==========================================
+# VIEW APPLICATIONS FOR A TASK
+# ==========================================
+
+@task_bp.route(
+    "/api/tasks/<int:task_id>/applications",
+    methods=["GET"]
+)
+@roles_required("help_seeker")
+def list_task_applications(task_id):
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT creator_id
+            FROM tasks
+            WHERE task_id = %s
+        """, (task_id,))
+
+        task = cursor.fetchone()
+
+        if task is None:
+            return jsonify({
+                "error": "Task not found"
+            }), 404
+
+        if task["creator_id"] != session["user_id"]:
+            return jsonify({
+                "error": "Permission denied"
+            }), 403
+
+        cursor.execute("""
+            SELECT
+                a.application_id,
+                a.task_id,
+                a.volunteer_id,
+                u.first_name,
+                u.last_name,
+                a.status,
+                a.applied_at
+            FROM task_applications AS a
+            JOIN users AS u
+                ON a.volunteer_id = u.user_id
+            WHERE a.task_id = %s
+            ORDER BY a.applied_at DESC, a.application_id DESC
+        """, (task_id,))
+
+        applications = cursor.fetchall()
+
+        for application in applications:
+            application["applied_at"] = (
+                application["applied_at"].isoformat()
+                if application["applied_at"] is not None
+                else None
+            )
+
+        return jsonify({
+            "task_id": task_id,
+            "applications": applications
+        }), 200
+
+    finally:
+        cursor.close()
+        connection.close()
+
+
+
+# ==========================================
 # ACCEPT OR REJECT AN APPLICATION
 # ==========================================
 

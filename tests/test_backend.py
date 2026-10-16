@@ -330,6 +330,49 @@ class QuickVolunteerTests(unittest.TestCase):
         response = self.post(f"/api/tasks/{task_id}/apply")
         self.assertEqual(response.status_code, 403)
 
+    
+    def test_21_task_creator_can_view_applications(self):
+        task_id, application_id = self.prepare_application()
+
+        self.login_user("seeker@test.com")
+
+        response = self.client.get(
+            f"/api/tasks/{task_id}/applications"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.get_json()
+        self.assertEqual(data["task_id"], task_id)
+        self.assertEqual(len(data["applications"]), 1)
+        self.assertEqual(
+            data["applications"][0]["application_id"],
+            application_id
+        )
+        self.assertEqual(
+            data["applications"][0]["first_name"],
+            "Test"
+        )
+
+    def test_22_other_user_cannot_view_applications(self):
+        task_id, _ = self.prepare_application()
+
+        self.register_user("other@test.com", "help_seeker")
+        self.login_user("other@test.com")
+
+        response = self.client.get(
+            f"/api/tasks/{task_id}/applications"
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_23_guest_cannot_view_applications(self):
+        response = self.client.get(
+            "/api/tasks/1/applications"
+        )
+
+        self.assertEqual(response.status_code, 401)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

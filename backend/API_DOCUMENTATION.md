@@ -256,6 +256,57 @@ Possible errors:
 - 409: Duplicate application, unavailable task,
        or expired deadline
 
+
+
+## View Applications for a Task
+
+GET /api/tasks/{task_id}/applications
+
+Requires authentication.
+
+Only the help seeker who created the task can view
+its volunteer applications.
+
+Success: HTTP 200
+
+Example response:
+
+{
+  "task_id": 1,
+  "applications": [
+    {
+      "application_id": 5,
+      "task_id": 1,
+      "volunteer_id": 2,
+      "first_name": "Alex",
+      "last_name": "Smith",
+      "status": "pending",
+      "applied_at": "2026-10-16T13:30:00"
+    }
+  ]
+}
+
+If nobody has applied:
+
+{
+  "task_id": 1,
+  "applications": []
+}
+
+Possible errors:
+- 401: Not logged in
+- 403: Not authorised to view this task
+- 404: Task not found
+
+The frontend can use application_id to accept or
+reject an application through:
+
+PATCH /api/applications/{application_id}/decision
+
+Volunteer passwords and contact details are not
+included in the response.
+
+
 ## 12. Accept or Reject an Application
 
 PATCH /api/applications/{application_id}/decision
@@ -373,7 +424,6 @@ The following features are not yet implemented:
 - Messaging
 - Notifications
 - Public task-category listing endpoint
-- Task-application listing endpoints
 
 The frontend should not depend on these features until
 the backend endpoints have been implemented and tested.
