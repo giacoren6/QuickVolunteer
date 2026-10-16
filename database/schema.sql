@@ -1,209 +1,107 @@
 
--- =============================================
--- QUICKVOLUNTEER DATABASE
--- Version 1 - SQLite
--- CPU4106 Group Project
--- =============================================
+-- QuickVolunteer V1 - MySQL 8
+-- Based on Database_Normalisation.xlsx
 
--- Enable foreign key constraints
-PRAGMA foreign_keys = ON;
+CREATE TABLE users (
+    user_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(254) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    phone VARCHAR(30),
+    postcode VARCHAR(10),
+    preferred_language VARCHAR(10),
+    account_type ENUM(
+        'help_seeker', 'volunteer', 'both', 'admin'
+    ) NOT NULL,
+    skills_summary TEXT,
+    availability_notes VARCHAR(255),
+    account_status ENUM(
+        'pending', 'active', 'suspended'
+    ) NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
 
+CREATE TABLE user_verifications (
+    verification_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    reviewed_by BIGINT UNSIGNED,
+    verification_type ENUM('account', 'dbs') NOT NULL,
+    status ENUM('pending', 'approved', 'rejected')
+        NOT NULL DEFAULT 'pending',
+    requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by) REFERENCES users(user_id)
+        ON DELETE SET NULL
+) ENGINE=InnoDB;
 
--- =============================================
--- TABLE 1: USERS
--- =============================================
+CREATE TABLE task_categories (
+    category_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    category_name VARCHAR(80) NOT NULL UNIQUE
+) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    first_name TEXT NOT NULL
-        CHECK(length(trim(first_name)) BETWEEN 1 AND 50),
-
-    last_name TEXT NOT NULL
-        CHECK(length(trim(last_name)) BETWEEN 1 AND 50),
-
-    email TEXT NOT NULL COLLATE NOCASE UNIQUE
-        CHECK(email LIKE '%_@_%._%' AND length(email) <= 254),
-
-    password_hash TEXT NOT NULL,
-
-    phone TEXT
-        CHECK(phone IS NULL OR length(phone) <= 30),
-
-    postcode TEXT
-        CHECK(postcode IS NULL OR length(postcode) <= 8),
-
-    preferred_language TEXT DEFAULT 'en',
-
-    account_status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(account_status IN ('pending', 'active', 'suspended')),
-
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-
--- =============================================
--- TABLE 2: ROLES
--- =============================================
-
-CREATE TABLE IF NOT EXISTS roles (
-    role_id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    role_name TEXT NOT NULL UNIQUE
-        CHECK(length(role_name) BETWEEN 1 AND 30)
-);
-
-
--- =============================================
--- TABLE 3: USER ROLES
--- =============================================
-
-CREATE TABLE IF NOT EXISTS user_roles (
-    user_id INTEGER NOT NULL
-        REFERENCES users(user_id) ON DELETE CASCADE,
-
-    role_id INTEGER NOT NULL
-        REFERENCES roles(role_id) ON DELETE RESTRICT,
-
-    PRIMARY KEY (user_id, role_id)
-);
-
-
--- =============================================
--- TABLE 4: TASK CATEGORIES
--- =============================================
-
-CREATE TABLE IF NOT EXISTS task_categories (
-    category_id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    category_name TEXT NOT NULL UNIQUE
-        CHECK(length(category_name) BETWEEN 1 AND 80)
-);
-
-
--- =============================================
--- TABLE 5: TASKS
--- =============================================
-
-CREATE TABLE IF NOT EXISTS tasks (
-    task_id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    creator_id INTEGER NOT NULL
-        REFERENCES users(user_id) ON DELETE RESTRICT,
-
-    category_id INTEGER NOT NULL
-        REFERENCES task_categories(category_id) ON DELETE RESTRICT,
-
-    title TEXT NOT NULL
-        CHECK(length(trim(title)) BETWEEN 1 AND 160),
-
+CREATE TABLE tasks (
+    task_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    creator_id BIGINT UNSIGNED NOT NULL,
+    category_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(160) NOT NULL,
     description TEXT NOT NULL,
+    location_text VARCHAR(160),
+    delivery_mode ENUM('in_person', 'remote') NOT NULL,
+    estimated_minutes SMALLINT UNSIGNED NOT NULL,
+    deadline_at DATETIME,
+    status ENUM('open', 'filled', 'completed', 'closed')
+        NOT NULL DEFAULT 'open',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_task_duration
+        CHECK (estimated_minutes BETWEEN 15 AND 60),
+    FOREIGN KEY (creator_id) REFERENCES users(user_id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (category_id) REFERENCES task_categories(category_id)
+        ON DELETE RESTRICT,
+    INDEX idx_tasks_creator (creator_id),
+    INDEX idx_tasks_category_status (category_id, status)
+) ENGINE=InnoDB;
 
-    location_text TEXT,
+CREATE TABLE task_applications (
+    application_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT UNSIGNED NOT NULL,
+    volunteer_id BIGINT UNSIGNED NOT NULL,
+    status ENUM('pending', 'accepted', 'rejected', 'completed')
+        NOT NULL DEFAULT 'pending',
+    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    accepted_at DATETIME,
+    volunteer_completed_at DATETIME,
+    help_seeker_completed_at DATETIME,
+    UNIQUE KEY uq_task_volunteer (task_id, volunteer_id),
+    FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (volunteer_id) REFERENCES users(user_id)
+        ON DELETE RESTRICT,
+    INDEX idx_applications_volunteer (volunteer_id)
+) ENGINE=InnoDB;
 
-    delivery_mode TEXT NOT NULL
-        CHECK(delivery_mode IN ('in_person', 'remote')),
-
-    contact_method TEXT NOT NULL,
-
-    required_device TEXT,
-
-    estimated_minutes INTEGER NOT NULL
-        CHECK(estimated_minutes BETWEEN 15 AND 60),
-
-    deadline_at TEXT NOT NULL,
-
-    volunteer_capacity INTEGER NOT NULL DEFAULT 1
-        CHECK(volunteer_capacity >= 1),
-
-    status TEXT NOT NULL DEFAULT 'open'
-        CHECK(status IN ('open', 'filled', 'completed', 'closed')),
-
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CHECK(datetime(deadline_at) IS NOT NULL),
-
-    CHECK(datetime(deadline_at) > datetime(created_at))
-);
-
-
--- =============================================
--- TABLE 6: TASK APPLICATIONS
--- =============================================
-
-CREATE TABLE IF NOT EXISTS task_applications (
-    application_id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    task_id INTEGER NOT NULL
-        REFERENCES tasks(task_id) ON DELETE CASCADE,
-
-    volunteer_id INTEGER NOT NULL
-        REFERENCES users(user_id) ON DELETE CASCADE,
-
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN (
-            'pending',
-            'accepted',
-            'rejected',
-            'completed'
-        )),
-
-    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    accepted_at TEXT,
-
-    completed_at TEXT,
-
-    UNIQUE(task_id, volunteer_id),
-
-    CHECK(
-        accepted_at IS NULL
-        OR datetime(accepted_at) IS NOT NULL
-    ),
-
-    CHECK(
-        completed_at IS NULL
-        OR datetime(completed_at) IS NOT NULL
-    )
-);
-
-
--- =============================================
--- TABLE 7: USER VERIFICATIONS
--- =============================================
-
-CREATE TABLE IF NOT EXISTS user_verifications (
-    verification_id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    user_id INTEGER NOT NULL
-        REFERENCES users(user_id) ON DELETE CASCADE,
-
-    reviewed_by INTEGER
-        REFERENCES users(user_id) ON DELETE SET NULL,
-
-    verification_type TEXT NOT NULL,
-
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'approved', 'rejected')),
-
-    requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    reviewed_at TEXT
-);
-
-
--- =============================================
--- INDEXES - IMPROVE QUERY PERFORMANCE
--- =============================================
-
-CREATE INDEX IF NOT EXISTS idx_tasks_creator
-ON tasks(creator_id);
-
-CREATE INDEX IF NOT EXISTS idx_tasks_category_status
-ON tasks(category_id, status);
-
-CREATE INDEX IF NOT EXISTS idx_applications_volunteer
-ON task_applications(volunteer_id);
-
-CREATE INDEX IF NOT EXISTS idx_verifications_user
-ON user_verifications(user_id);
+CREATE TABLE reports (
+    report_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    reporter_id BIGINT UNSIGNED NOT NULL,
+    reported_user_id BIGINT UNSIGNED,
+    task_id BIGINT UNSIGNED,
+    reviewed_by BIGINT UNSIGNED,
+    reason TEXT NOT NULL,
+    status ENUM('open', 'reviewing', 'closed')
+        NOT NULL DEFAULT 'open',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME,
+    
+    FOREIGN KEY (reporter_id) REFERENCES users(user_id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
+        ON DELETE SET NULL,
+    FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+        ON DELETE SET NULL,
+    FOREIGN KEY (reviewed_by) REFERENCES users(user_id)
+        ON DELETE SET NULL,
+    INDEX idx_reports_status (status)
+) ENGINE=InnoDB;

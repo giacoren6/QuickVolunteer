@@ -1,10 +1,18 @@
-from flask_wtf.csrf import CSRFProtect
-from task_routes import task_bp
+
 import os
-from auth import auth_bp
-from flask import Flask, jsonify, render_template
-import sqlite3
 from pathlib import Path
+
+from flask import Flask, jsonify, render_template
+from flask_wtf.csrf import CSRFProtect, generate_csrf
+
+from db import get_db_connection
+from auth import auth_bp
+from task_routes import task_bp
+
+
+# ==========================================
+# FLASK APPLICATION CONFIGURATION
+# ==========================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -22,31 +30,31 @@ app.config.update(
 )
 
 if not app.config["SECRET_KEY"]:
-    raise RuntimeError("Set FLASK_SECRET_KEY before starting Flask")
+    raise RuntimeError(
+        "Set FLASK_SECRET_KEY before starting Flask"
+    )
+
+
+# ==========================================
+# REGISTER BLUEPRINTS AND CSRF PROTECTION
+# ==========================================
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(task_bp)
+
 csrf = CSRFProtect(app)
 
-DB_PATH = Path(
-    os.environ.get(
-        "QUICKVOLUNTEER_DB_PATH",
-        str(BASE_DIR / "database" / "quickvolunteer.db")
-    )
-)
 
-def get_db_connection():
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
-
+# ==========================================
+# MYSQL TASK QUERY
+# ==========================================
 
 def fetch_open_tasks():
     connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
 
     try:
-        rows = connection.execute("""
+        cursor.execute("""
             SELECT
                 t.task_id,
                 t.title,
@@ -61,18 +69,27 @@ def fetch_open_tasks():
                 ON t.category_id = c.category_id
             WHERE t.status = 'open'
             ORDER BY t.task_id
-        """).fetchall()
+        """)
 
-        return [dict(row) for row in rows]
+        return cursor.fetchall()
 
     finally:
+        cursor.close()
         connection.close()
 
+
+# ==========================================
+# HOME PAGE
+# ==========================================
 
 @app.route("/")
 def home():
     return "Welcome to QuickVolunteer!"
 
+
+# ==========================================
+# TASKS PAGE
+# ==========================================
 
 @app.route("/tasks")
 def tasks_page():
@@ -80,13 +97,18 @@ def tasks_page():
     return render_template("tasks.html", tasks=tasks)
 
 
-@app.route("/api/tasks")
+# ==========================================
+# REST API - GET TASKS
+# ==========================================
+
+@app.route("/api/tasks", methods=["GET"])
 def tasks_api():
     return jsonify(fetch_open_tasks())
 
 
-
-from flask_wtf.csrf import generate_csrf
+# ==========================================
+# CSRF TOKEN ENDPOINT
+# ==========================================
 
 @app.route("/api/csrf-token", methods=["GET"])
 def csrf_token():
@@ -95,6 +117,9 @@ def csrf_token():
     })
 
 
+# ==========================================
+# RUN FLASK
+# ==========================================
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)
