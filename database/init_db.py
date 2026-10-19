@@ -1,59 +1,52 @@
+import os
+import mysql.connector
 
-import sqlite3
-from pathlib import Path
-
-# Find the database folder
-BASE_DIR = Path(__file__).resolve().parent
-
-# Define the database and SQL file locations
-DB_PATH = BASE_DIR / "quickvolunteer.db"
-SCHEMA_PATH = BASE_DIR / "schema.sql"
+DB_CONFIG = {
+    "host": os.getenv("MYSQL_HOST", "127.0.0.1"),
+    "port": int(os.getenv("MYSQL_PORT", "3306")),
+    "user": os.getenv("MYSQL_USER", "quickvolunteer_app"),
+    "password": os.getenv("MYSQL_PASSWORD"),
+    "database": os.getenv("MYSQL_DATABASE", "quickvolunteer_db"),
+}
 
 
 def create_database():
-    # Connect to SQLite (creates the file if needed)
-    connection = sqlite3.connect(DB_PATH)
+    if not DB_CONFIG["password"]:
+        raise RuntimeError("MYSQL_PASSWORD environment variable is required")
+
+    connection = mysql.connector.connect(**DB_CONFIG)
 
     try:
-        # Enable foreign key constraints
-        connection.execute("PRAGMA foreign_keys = ON")
+        cursor = connection.cursor()
 
-        # Read our SQL schema
-        with open(SCHEMA_PATH, "r", encoding="utf-8") as file:
-            sql_script = file.read()
+        cursor.execute("SHOW TABLES")
+        tables = [row[0] for row in cursor.fetchall()]
 
-        # Execute all CREATE TABLE statements
-        connection.executescript(sql_script)
-
-        # Display the tables
-        cursor = connection.execute("""
-            SELECT name
-            FROM sqlite_master
-            WHERE type = 'table'
-              AND name NOT LIKE 'sqlite_%'
-            ORDER BY name
-        """)
-
-        tables = cursor.fetchall()
-
-        print("QuickVolunteer database created!")
+        print("QuickVolunteer MySQL Database")
         print("------------------------------")
 
         for table in tables:
-            print("Table:", table[0])
+            print("Table:", table)
 
         print("------------------------------")
         print("Total tables:", len(tables))
 
-        # Verify foreign key relationships
-        errors = connection.execute(
-            "PRAGMA foreign_key_check"
-        ).fetchall()
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)
 
-        if errors:
-            print("Foreign key problems:", errors)
+        foreign_key_count = cursor.fetchone()[0]
+        print("Foreign key relationships:", foreign_key_count)
+
+        if len(tables) == 12:
+            print("Database structure: PASSED")
         else:
-            print("Foreign key check: PASSED")
+            print("Database structure: CHECK REQUIRED")
+
+        cursor.close()
 
     finally:
         connection.close()

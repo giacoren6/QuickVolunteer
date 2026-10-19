@@ -15,12 +15,8 @@ SELECT
     u.first_name,
     u.last_name,
     u.email,
-    r.role_name
+    u.account_type AS role_name
 FROM users AS u
-JOIN user_roles AS ur
-    ON u.user_id = ur.user_id
-JOIN roles AS r
-    ON ur.role_id = r.role_id
 ORDER BY u.first_name;
 
 
@@ -40,7 +36,7 @@ ORDER BY t.deadline_at;
 
 -- QUERY 4: Show applications and volunteer names
 SELECT
-    u.first_name || ' ' || u.last_name AS volunteer,
+    CONCAT(u.first_name, ' ', u.last_name) AS volunteer,
     t.title AS task,
     a.status AS application_status
 FROM task_applications AS a
@@ -75,7 +71,7 @@ WHERE delivery_mode = 'remote'
 
 -- QUERY 7: Show tasks published by each creator
 SELECT
-    u.first_name || ' ' || u.last_name AS creator,
+    CONCAT(u.first_name, ' ', u.last_name) AS creator,
     t.title,
     t.status
 FROM tasks AS t
@@ -110,4 +106,12 @@ WHERE a.status = 'pending';
 
 
 -- QUERY 10: Check database relationships
-PRAGMA foreign_key_check;
+SELECT
+    TABLE_NAME,
+    COLUMN_NAME,
+    REFERENCED_TABLE_NAME,
+    REFERENCED_COLUMN_NAME
+FROM information_schema.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = DATABASE()
+  AND REFERENCED_TABLE_NAME IS NOT NULL
+ORDER BY TABLE_NAME, COLUMN_NAME;

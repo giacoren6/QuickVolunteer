@@ -1,35 +1,19 @@
-
 -- ============================================
--- QUICKVOLUNTEER - SAMPLE DATA
--- Version 1
+-- QUICKVOLUNTEER - MYSQL DEMO DATA
+-- CPU4106 Group Project
 -- ============================================
-
-PRAGMA foreign_keys = ON;
-
-BEGIN TRANSACTION;
-
--- TABLE 1: ROLES
-INSERT OR IGNORE INTO roles (role_name)
-VALUES
-    ('volunteer'),
-    ('help_seeker'),
-    ('organisation'),
-    ('administrator');
-
--- TABLE 2: TASK CATEGORIES
-INSERT OR IGNORE INTO task_categories (category_name)
-VALUES
-    ('Shopping'),
-    ('Technology Support'),
-    ('Education'),
-    ('Community Support'),
-    ('Environment'),
-    ('Accessibility'),
-    ('Social Support'),
-    ('Other');
-
-COMMIT;
-
--- Check inserted records
-SELECT * FROM roles;
-SELECT * FROM task_categories;
+--
+-- Demo data is maintained by:
+-- database/seeds/seed_demo.py
+--
+-- To load fictional users, tasks and applications:
+--
+--     python database/seeds/seed_demo.py
+--
+-- This file is intentionally read-only.
+-- It contains no INSERT, UPDATE or DELETE statements.
+--
+-- View existing task categories:
+SELECT category_id, category_name
+FROM task_categories
+ORDER BY category_id;
