@@ -95,13 +95,26 @@ CREATE TABLE reports (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reviewed_at DATETIME,
     
-    FOREIGN KEY (reporter_id) REFERENCES users(user_id)
+        FOREIGN KEY (reporter_id) REFERENCES users(user_id)
         ON DELETE RESTRICT,
-    FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
-        ON DELETE SET NULL,
-    FOREIGN KEY (task_id) REFERENCES tasks(task_id)
-        ON DELETE SET NULL,
+
+    CONSTRAINT fk_reports_reported_user
+        FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_reports_task
+        FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+        ON DELETE RESTRICT,
+
     FOREIGN KEY (reviewed_by) REFERENCES users(user_id)
         ON DELETE SET NULL,
+
+    CONSTRAINT chk_reports_one_target
+        CHECK (
+            (reported_user_id IS NOT NULL AND task_id IS NULL)
+            OR
+            (reported_user_id IS NULL AND task_id IS NOT NULL)
+        ),
+
     INDEX idx_reports_status (status)
 ) ENGINE=InnoDB;
