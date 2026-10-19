@@ -118,3 +118,103 @@ CREATE TABLE reports (
 
     INDEX idx_reports_status (status)
 ) ENGINE=InnoDB;
+
+CREATE TABLE reviews (
+    review_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    application_id BIGINT UNSIGNED NOT NULL,
+    reviewer_id BIGINT UNSIGNED NOT NULL,
+    reviewed_user_id BIGINT UNSIGNED NOT NULL,
+    rating TINYINT UNSIGNED NOT NULL,
+    comment TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    moderation_status ENUM('visible', 'hidden')
+        NOT NULL DEFAULT 'visible',
+    moderated_by BIGINT UNSIGNED,
+    moderated_at DATETIME,
+    moderation_reason TEXT,
+
+    CONSTRAINT chk_review_rating CHECK (rating BETWEEN 1 AND 5),
+    UNIQUE KEY uq_review_application_reviewer (application_id, reviewer_id),
+
+    FOREIGN KEY (application_id) REFERENCES task_applications(application_id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (reviewer_id) REFERENCES users(user_id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (reviewed_user_id) REFERENCES users(user_id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (moderated_by) REFERENCES users(user_id)
+        ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE conversations (
+    conversation_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT UNSIGNED NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE conversation_members (
+    conversation_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_read_at DATETIME,
+
+    PRIMARY KEY (conversation_id, user_id),
+
+    FOREIGN KEY (conversation_id)
+        REFERENCES conversations(conversation_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE messages (
+    message_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    conversation_id BIGINT UNSIGNED NOT NULL,
+    sender_id BIGINT UNSIGNED NOT NULL,
+    content TEXT NOT NULL,
+    sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (conversation_id)
+        REFERENCES conversations(conversation_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (sender_id)
+        REFERENCES users(user_id)
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE notifications (
+    notification_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    task_application_id BIGINT UNSIGNED,
+    title VARCHAR(120) NOT NULL,
+    content TEXT NOT NULL,
+    read_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (task_application_id)
+        REFERENCES task_applications(application_id)
+        ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE audit_logs (
+    audit_log_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    actor_id BIGINT UNSIGNED,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id BIGINT UNSIGNED,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (actor_id)
+        REFERENCES users(user_id)
+        ON DELETE SET NULL
+) ENGINE=InnoDB;
