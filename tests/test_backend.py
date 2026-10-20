@@ -34,6 +34,7 @@ class QuickVolunteerTests(unittest.TestCase):
         cursor = connection.cursor()
 
         try:
+            cursor.execute("DELETE FROM reviews")
             cursor.execute("DELETE FROM reports")
             cursor.execute("DELETE FROM task_applications")
             cursor.execute("DELETE FROM tasks")
@@ -330,7 +331,7 @@ class QuickVolunteerTests(unittest.TestCase):
         response = self.post(f"/api/tasks/{task_id}/apply")
         self.assertEqual(response.status_code, 403)
 
-    
+
     def test_21_task_creator_can_view_applications(self):
         task_id, application_id = self.prepare_application()
 
@@ -373,7 +374,7 @@ class QuickVolunteerTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
 
-    
+
     def test_24_help_seeker_can_view_own_tasks(self):
         self.register_user("seeker@test.com", "help_seeker")
         self.login_user("seeker@test.com")
@@ -411,7 +412,7 @@ class QuickVolunteerTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
 
-    
+
     def test_27_volunteer_can_view_own_applications(self):
         task_id, application_id = self.prepare_application()
 
@@ -455,7 +456,7 @@ class QuickVolunteerTests(unittest.TestCase):
         response = self.client.get("/api/my-applications")
 
         self.assertEqual(response.status_code, 401)
-    
+
     def test_30_categories_endpoint_returns_200(self):
         response = self.client.get("/api/categories")
 
@@ -480,7 +481,7 @@ class QuickVolunteerTests(unittest.TestCase):
             self.assertIsInstance(category["category_id"], int)
             self.assertIsInstance(category["category_name"], str)
 
-    
+
     def test_33_creator_can_cancel_open_task(self):
         self.register_user("seeker@test.com", "help_seeker")
         self.login_user("seeker@test.com")
@@ -572,7 +573,7 @@ class QuickVolunteerTests(unittest.TestCase):
             cursor.close()
             connection.close()
 
-    
+
     def test_38_creator_can_cancel_filled_task(self):
         task_id, application_id = self.prepare_application()
 
@@ -601,6 +602,493 @@ class QuickVolunteerTests(unittest.TestCase):
         self.assertEqual(application["task_status"], "closed")
         self.assertEqual(application["application_status"], "accepted")
 
+
+    def test_39_guest_cannot_view_admin_reports(self):
+        response = self.client.get("/api/admin/reports")
+
+        self.assertEqual(response.status_code, 401)
+
+
+
+    def test_40_volunteer_cannot_view_admin_reports(self):
+        response = self.register_user(
+            "volunteer40@test.com",
+            "volunteer"
+        )
+        self.assertEqual(response.status_code, 201)
+
+        response = self.login_user("volunteer40@test.com")
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get("/api/admin/reports")
+
+        self.assertEqual(response.status_code, 403)
+
+
+
+
+    def test_41_volunteer_can_submit_report(self):
+        self.assertEqual(
+            self.register_user("reporter41@test.com", "volunteer").status_code,
+            201
+        )
+
+        self.assertEqual(
+            self.register_user("reported41@test.com", "volunteer").status_code,
+            201
+        )
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute(
+                "SELECT user_id FROM users WHERE email = %s",
+                ("reported41@test.com",)
+            )
+            reported_user_id = cursor.fetchone()[0]
+        finally:
+            cursor.close()
+            connection.close()
+
+        self.assertEqual(
+            self.login_user("reporter41@test.com").status_code,
+            200
+        )
+
+        response = self.post("/api/reports", {
+            "reported_user_id": reported_user_id,
+            "reason": "TEST - Inappropriate behaviour"
+        })
+
+        self.assertEqual(response.status_code, 201)
+
+
+
+    def test_42_volunteer_cannot_report_themselves(self):
+        self.assertEqual(
+            self.register_user("reporter42@test.com", "volunteer").status_code,
+            201
+        )
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute(
+                "SELECT user_id FROM users WHERE email = %s",
+                ("reporter42@test.com",)
+            )
+            user_id = cursor.fetchone()[0]
+        finally:
+            cursor.close()
+            connection.close()
+
+        self.assertEqual(
+            self.login_user("reporter42@test.com").status_code,
+            200
+        )
+
+        response = self.post("/api/reports", {
+            "reported_user_id": user_id,
+            "reason": "TEST - Attempting to report myself"
+        })
+
+        self.assertEqual(response.status_code, 400)
+
+
+
+
+    def test_43_admin_can_view_reports(self):
+        from werkzeug.security import generate_password_hash
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO users (
+                    first_name,
+                    last_name,
+                    email,
+                    password_hash,
+                    account_type,
+                    account_status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                "Test",
+                "Administrator",
+                "admin43@test.com",
+                generate_password_hash("TestingPassword123!"),
+                "admin",
+                "active"
+            ))
+
+            connection.commit()
+
+        finally:
+            cursor.close()
+            connection.close()
+
+        response = self.login_user("admin43@test.com")
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get("/api/admin/reports")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.get_json()
+        self.assertIn("reports", data)
+        self.assertIn("total", data)
+
+
+
+    def test_44_admin_can_update_report_status(self):
+        from werkzeug.security import generate_password_hash
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            users = [
+                ("Administrator", "admin44@test.com", "admin"),
+                ("Reporter", "reporter44@test.com", "volunteer"),
+                ("Reported", "reported44@test.com", "volunteer")
+            ]
+
+            user_ids = {}
+
+            for name, email, role in users:
+                cursor.execute("""
+                    INSERT INTO users (
+                        first_name, last_name, email,
+                        password_hash, account_type, account_status
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    "Test",
+                    name,
+                    email,
+                    generate_password_hash("TestingPassword123!"),
+                    role,
+                    "active"
+                ))
+
+                user_ids[name] = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO reports (
+                    reporter_id, reported_user_id, reason, status
+                )
+                VALUES (%s, %s, %s, %s)
+            """, (
+                user_ids["Reporter"],
+                user_ids["Reported"],
+                "TEST - Report moderation",
+                "open"
+            ))
+
+            report_id = cursor.lastrowid
+            connection.commit()
+
+        finally:
+            cursor.close()
+            connection.close()
+
+        self.assertEqual(
+            self.login_user("admin44@test.com").status_code,
+            200
+        )
+
+        response = self.patch(
+            f"/api/admin/reports/{report_id}/status",
+            {"status": "reviewing"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT status, reviewed_by, reviewed_at
+                FROM reports
+                WHERE report_id = %s
+            """, (report_id,))
+
+            result = cursor.fetchone()
+            self.assertIsNotNone(result)
+
+            status, reviewed_by, reviewed_at = result
+
+            self.assertEqual(status, "reviewing")
+            self.assertEqual(
+                reviewed_by,
+                user_ids["Administrator"]
+            )
+            self.assertIsNotNone(reviewed_at)
+
+        finally:
+            cursor.close()
+            connection.close()
+
+    def test_45_guest_cannot_moderate_reviews(self):
+        response = self.patch(
+            "/api/admin/reviews/1/moderation",
+            {
+                "status": "hidden",
+                "reason": "TEST - Unauthorised moderation attempt"
+            }
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+
+    def test_46_volunteer_cannot_moderate_reviews(self):
+        response = self.register_user(
+            "volunteer46@test.com",
+            "volunteer"
+        )
+        self.assertEqual(response.status_code, 201)
+
+        response = self.login_user("volunteer46@test.com")
+        self.assertEqual(response.status_code, 200)
+
+        response = self.patch(
+            "/api/admin/reviews/1/moderation",
+            {
+                "status": "hidden",
+                "reason": "TEST - Volunteer moderation attempt"
+            }
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
+
+    def test_47_admin_can_hide_review(self):
+        from werkzeug.security import generate_password_hash
+
+        # Create a real application using existing test helpers.
+        task_id, application_id = self.prepare_application()
+        self.accept_application(application_id)
+
+        # Both users confirm task completion.
+        self.login_user("volunteer@test.com")
+        self.assertEqual(
+            self.patch(f"/api/tasks/{task_id}/complete").status_code,
+            200
+        )
+
+        self.login_user("seeker@test.com")
+        self.assertEqual(
+            self.patch(f"/api/tasks/{task_id}/complete").status_code,
+            200
+        )
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT user_id, email
+                FROM users
+                WHERE email IN (%s, %s)
+            """, ("seeker@test.com", "volunteer@test.com"))
+
+            user_ids = {
+                email: user_id
+                for user_id, email in cursor.fetchall()
+            }
+
+            cursor.execute("""
+                INSERT INTO users (
+                    first_name, last_name, email,
+                    password_hash, account_type, account_status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                "Test", "Administrator", "admin47@test.com",
+                generate_password_hash("TestingPassword123!"),
+                "admin", "active"
+            ))
+            admin_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO reviews (
+                    application_id, reviewer_id,
+                    reviewed_user_id, rating, comment
+                )
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                application_id,
+                user_ids["seeker@test.com"],
+                user_ids["volunteer@test.com"],
+                5,
+                "TEST - Review moderation"
+            ))
+            review_id = cursor.lastrowid
+
+            connection.commit()
+
+        finally:
+            cursor.close()
+            connection.close()
+
+        # Administrator hides the review.
+        self.assertEqual(
+            self.login_user("admin47@test.com").status_code,
+            200
+        )
+
+        response = self.patch(
+            f"/api/admin/reviews/{review_id}/moderation",
+            {
+                "status": "hidden",
+                "reason": "TEST - Review requires moderation"
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        # Verify the changes were saved in MySQL.
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT moderation_status, moderated_by,
+                       moderated_at, moderation_reason
+                FROM reviews
+                WHERE review_id = %s
+            """, (review_id,))
+
+            result = cursor.fetchone()
+            self.assertIsNotNone(result)
+
+            status, moderated_by, moderated_at, reason = result
+
+            self.assertEqual(status, "hidden")
+            self.assertEqual(moderated_by, admin_id)
+            self.assertIsNotNone(moderated_at)
+            self.assertEqual(
+                reason,
+                "TEST - Review requires moderation"
+            )
+
+        finally:
+            cursor.close()
+            connection.close()
+
+
+    def test_48_admin_can_restore_review(self):
+        # First create and hide a review using Test 47's setup.
+        self.test_47_admin_can_hide_review()
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT review_id
+                FROM reviews
+                WHERE moderation_status = 'hidden'
+                ORDER BY review_id DESC
+                LIMIT 1
+            """)
+
+            result = cursor.fetchone()
+            self.assertIsNotNone(result)
+            review_id = result[0]
+
+        finally:
+            cursor.close()
+            connection.close()
+
+        # Restore the hidden review.
+        response = self.patch(
+            f"/api/admin/reviews/{review_id}/moderation",
+            {
+                "status": "visible",
+                "reason": "TEST - Review approved for restoration"
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        # Verify the updated review in MySQL.
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT moderation_status, moderation_reason
+                FROM reviews
+                WHERE review_id = %s
+            """, (review_id,))
+
+            result = cursor.fetchone()
+            self.assertIsNotNone(result)
+
+            status, reason = result
+
+            self.assertEqual(status, "visible")
+            self.assertEqual(
+                reason,
+                "TEST - Review approved for restoration"
+            )
+
+        finally:
+            cursor.close()
+            connection.close()
+
+
+    def test_49_admin_cannot_use_invalid_review_status(self):
+        # Create a review and log in as administrator.
+        self.test_47_admin_can_hide_review()
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT review_id
+                FROM reviews
+                ORDER BY review_id DESC
+                LIMIT 1
+            """)
+            review_id = cursor.fetchone()[0]
+        finally:
+            cursor.close()
+            connection.close()
+
+        response = self.patch(
+            f"/api/admin/reviews/{review_id}/moderation",
+            {
+                "status": "deleted",
+                "reason": "TEST - Invalid moderation status"
+            }
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        # Invalid requests must not change the review.
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT moderation_status
+                FROM reviews
+                WHERE review_id = %s
+            """, (review_id,))
+
+            self.assertEqual(cursor.fetchone()[0], "hidden")
+        finally:
+            cursor.close()
+            connection.close()
 
 
 

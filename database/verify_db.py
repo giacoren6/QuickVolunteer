@@ -10,7 +10,7 @@ DB_CONFIG = {
 }
 
 
-def create_database():
+def verify_database():
     if not DB_CONFIG["password"]:
         raise RuntimeError("MYSQL_PASSWORD environment variable is required")
 
@@ -53,4 +53,4 @@ def create_database():
 
 
 if __name__ == "__main__":
-    create_database()
+    verify_database()

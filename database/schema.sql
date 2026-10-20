@@ -18,7 +18,7 @@ CREATE TABLE users (
     availability_notes VARCHAR(255),
     account_status ENUM(
         'pending', 'active', 'suspended'
-    ) NOT NULL DEFAULT 'pending',
+    ) NOT NULL DEFAULT 'active',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

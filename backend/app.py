@@ -8,6 +8,7 @@ from flask_wtf.csrf import CSRFProtect, generate_csrf
 from db import get_db_connection
 from auth import auth_bp
 from task_routes import task_bp
+from admin_routes import admin_bp
 
 
 # ==========================================
@@ -41,6 +42,7 @@ if not app.config["SECRET_KEY"]:
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(task_bp)
+app.register_blueprint(admin_bp)
 
 csrf = CSRFProtect(app)
 
