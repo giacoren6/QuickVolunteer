@@ -478,10 +478,39 @@ def seed_applications(connection):
 
 
 
+
+def seed_skills(connection):
+    skills = [
+        "Cooking",
+        "IT Support",
+        "Gardening",
+        "Cleaning",
+        "Shopping",
+        "Tutoring",
+        "Pet Care",
+        "Translation",
+        "DIY",
+        "Digital Skills",
+    ]
+
+    cursor = connection.cursor()
+
+    try:
+        cursor.executemany(
+            "INSERT IGNORE INTO skills (skill_name) VALUES (%s)",
+            [(skill,) for skill in skills],
+        )
+        print("Available skills configured: 10")
+    finally:
+        cursor.close()
+
+
+
 def main():
     connection = get_connection()
 
     try:
+        seed_skills(connection)
         seed_users(connection)
         seed_tasks(connection)
         seed_applications(connection)

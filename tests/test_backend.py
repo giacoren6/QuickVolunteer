@@ -34,6 +34,8 @@ class QuickVolunteerTests(unittest.TestCase):
         cursor = connection.cursor()
 
         try:
+            cursor.execute("DELETE FROM task_skills")
+            cursor.execute("DELETE FROM user_skills")
             cursor.execute("DELETE FROM reviews")
             cursor.execute("DELETE FROM reports")
             cursor.execute("DELETE FROM task_applications")
@@ -45,6 +47,16 @@ class QuickVolunteerTests(unittest.TestCase):
             cursor.execute("""
                 INSERT INTO task_categories (category_id, category_name)
                 VALUES (1, 'Community Support')
+            """)
+
+            cursor.execute("""
+                INSERT INTO skills (skill_id, skill_name)
+                VALUES
+                    (1, 'Cooking'),
+                    (2, 'IT Support'),
+                    (7, 'Pet Care')
+                ON DUPLICATE KEY UPDATE
+                    skill_name = VALUES(skill_name)
             """)
 
             connection.commit()
@@ -73,6 +85,13 @@ class QuickVolunteerTests(unittest.TestCase):
 
     def patch(self, path, json=None):
         return self.client.patch(
+            path,
+            json=json,
+            headers=self.csrf_headers()
+        )
+
+    def put(self, path, json=None):
+        return self.client.put(
             path,
             json=json,
             headers=self.csrf_headers()
@@ -1090,6 +1109,112 @@ class QuickVolunteerTests(unittest.TestCase):
             cursor.close()
             connection.close()
 
+
+
+
+    def test_volunteer_can_save_and_retrieve_skills(self):
+        response = self.register_user(
+            "skills-volunteer@test.com",
+            "volunteer"
+        )
+        self.assertEqual(response.status_code, 201)
+
+        response = self.login_user(
+            "skills-volunteer@test.com"
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.put(
+            "/api/users/me/skills",
+            {"skill_ids": [1, 2, 7]}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(
+            "/api/users/me/skills"
+        )
+        self.assertEqual(response.status_code, 200)
+
+        data = response.get_json()
+        self.assertEqual(data["total"], 3)
+
+        saved_ids = {
+            skill["skill_id"]
+            for skill in data["skills"]
+        }
+        self.assertEqual(saved_ids, {1, 2, 7})
+
+    def test_public_can_list_skills(self):
+        response = self.client.get("/api/skills")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.get_json()
+        skill_names = {
+            skill["skill_name"]
+            for skill in data["skills"]
+        }
+
+        self.assertTrue({
+            "Cooking",
+            "IT Support",
+            "Pet Care"
+        }.issubset(skill_names))
+
+
+    def test_only_task_owner_can_update_skills(self):
+        self.assertEqual(
+            self.register_user("owner@test.com", "help_seeker").status_code,
+            201
+        )
+        self.assertEqual(
+            self.register_user("other@test.com", "volunteer").status_code,
+            201
+        )
+
+        self.login_user("owner@test.com")
+        task_id = self.create_task().get_json()["task_id"]
+
+        response = self.put(
+            f"/api/tasks/{task_id}/skills",
+            {"skill_ids": [2]}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(f"/api/tasks/{task_id}/skills")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["total"], 1)
+
+        self.login_user("other@test.com")
+        response = self.put(
+            f"/api/tasks/{task_id}/skills",
+            {"skill_ids": [1]}
+        )
+        self.assertEqual(response.status_code, 403)
+
+
+    def test_rejects_unknown_skill_id(self):
+        self.assertEqual(
+            self.register_user(
+                "invalid-skills@test.com",
+                "volunteer"
+            ).status_code,
+            201
+        )
+
+        self.assertEqual(
+            self.login_user(
+                "invalid-skills@test.com"
+            ).status_code,
+            200
+        )
+
+        response = self.put(
+            "/api/users/me/skills",
+            {"skill_ids": [999999]}
+        )
+
+        self.assertEqual(response.status_code, 400)
 
 
 if __name__ == "__main__":

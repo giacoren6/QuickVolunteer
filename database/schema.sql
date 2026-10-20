@@ -218,3 +218,40 @@ CREATE TABLE audit_logs (
         REFERENCES users(user_id)
         ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+-- SKILLS SYSTEM
+
+CREATE TABLE skills (
+    skill_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    skill_name VARCHAR(100) NOT NULL UNIQUE
+) ENGINE=InnoDB;
+
+CREATE TABLE user_skills (
+    user_id BIGINT UNSIGNED NOT NULL,
+    skill_id BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (user_id, skill_id),
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (skill_id)
+        REFERENCES skills(skill_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE task_skills (
+    task_id BIGINT UNSIGNED NOT NULL,
+    skill_id BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (task_id, skill_id),
+
+    FOREIGN KEY (task_id)
+        REFERENCES tasks(task_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (skill_id)
+        REFERENCES skills(skill_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;

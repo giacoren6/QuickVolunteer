@@ -9,6 +9,7 @@ from db import get_db_connection
 from auth import auth_bp
 from task_routes import task_bp
 from admin_routes import admin_bp
+from skills_routes import skills_bp
 
 
 # ==========================================
@@ -43,6 +44,7 @@ if not app.config["SECRET_KEY"]:
 app.register_blueprint(auth_bp)
 app.register_blueprint(task_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(skills_bp)
 
 csrf = CSRFProtect(app)
 
