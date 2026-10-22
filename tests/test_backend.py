@@ -1216,6 +1216,606 @@ class QuickVolunteerTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_54_volunteer_can_review_completed_task(self):
+        task_id, application_id = self.prepare_application()
+        self.accept_application(application_id)
+
+        self.login_user("volunteer@test.com")
+        self.assertEqual(
+            self.patch(f"/api/tasks/{task_id}/complete").status_code,
+            200
+        )
+
+        self.login_user("seeker@test.com")
+        self.assertEqual(
+            self.patch(f"/api/tasks/{task_id}/complete").status_code,
+            200
+        )
+
+        self.login_user("volunteer@test.com")
+        response = self.post("/api/reviews", {
+            "application_id": application_id,
+            "rating": 5,
+            "comment": "Great experience helping with this task!"
+        })
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIn("review_id", response.get_json())
+
+
+    def test_55_duplicate_review_blocked(self):
+        task_id, application_id = self.prepare_application()
+        self.accept_application(application_id)
+
+        self.login_user("volunteer@test.com")
+        self.patch(f"/api/tasks/{task_id}/complete")
+
+        self.login_user("seeker@test.com")
+        self.patch(f"/api/tasks/{task_id}/complete")
+
+        self.login_user("volunteer@test.com")
+
+        review = {
+            "application_id": application_id,
+            "rating": 5,
+            "comment": "Excellent experience!"
+        }
+
+        first = self.post("/api/reviews", review)
+        self.assertEqual(first.status_code, 201)
+
+        duplicate = self.post("/api/reviews", review)
+        self.assertEqual(duplicate.status_code, 409)
+
+
+    def test_56_unrelated_user_cannot_review(self):
+        task_id, application_id = self.prepare_application()
+        self.accept_application(application_id)
+
+        self.login_user("volunteer@test.com")
+        self.patch(f"/api/tasks/{task_id}/complete")
+
+        self.login_user("seeker@test.com")
+        self.patch(f"/api/tasks/{task_id}/complete")
+
+        self.register_user("outsider@test.com", "volunteer")
+        self.login_user("outsider@test.com")
+
+        response = self.post("/api/reviews", {
+            "application_id": application_id,
+            "rating": 5,
+            "comment": "I was not involved in this task."
+        })
+
+        self.assertEqual(response.status_code, 403)
+
+
+    def test_57_review_before_completion_blocked(self):
+        task_id, application_id = self.prepare_application()
+        self.accept_application(application_id)
+
+        self.login_user("volunteer@test.com")
+
+        response = self.post("/api/reviews", {
+            "application_id": application_id,
+            "rating": 5,
+            "comment": "Trying to review too early."
+        })
+
+        self.assertEqual(response.status_code, 400)
+
+
+    def test_58_invalid_review_ratings_blocked(self):
+        _, application_id = self.prepare_application()
+
+        for rating in [0, 6, -1, "five", True]:
+            response = self.post("/api/reviews", {
+                "application_id": application_id,
+                "rating": rating,
+                "comment": "Testing invalid ratings"
+            })
+
+            self.assertEqual(response.status_code, 400)
+
+
+    def test_59_public_reviews_show_average_rating(self):
+        task_id, application_id = self.prepare_application()
+        self.accept_application(application_id)
+
+        self.login_user("volunteer@test.com")
+        self.patch(f"/api/tasks/{task_id}/complete")
+
+        self.login_user("seeker@test.com")
+        self.patch(f"/api/tasks/{task_id}/complete")
+
+        self.login_user("volunteer@test.com")
+        review = self.post("/api/reviews", {
+            "application_id": application_id,
+            "rating": 5,
+            "comment": "Excellent experience!"
+        })
+        self.assertEqual(review.status_code, 201)
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute(
+                "SELECT user_id FROM users WHERE email = %s",
+                ("seeker@test.com",)
+            )
+            seeker_id = cursor.fetchone()[0]
+        finally:
+            cursor.close()
+            connection.close()
+
+        response = self.client.get(
+            f"/api/users/{seeker_id}/reviews"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["review_count"], 1)
+        self.assertEqual(data["average_rating"], 5.0)
+        self.assertEqual(data["reviews"][0]["rating"], 5)
+
+
+    def test_60_hidden_reviews_not_public(self):
+        task_id, application_id = self.prepare_application()
+        self.accept_application(application_id)
+
+        self.login_user("volunteer@test.com")
+        self.patch(f"/api/tasks/{task_id}/complete")
+
+        self.login_user("seeker@test.com")
+        self.patch(f"/api/tasks/{task_id}/complete")
+
+        self.login_user("volunteer@test.com")
+        response = self.post("/api/reviews", {
+            "application_id": application_id,
+            "rating": 5,
+            "comment": "This review will be hidden."
+        })
+        self.assertEqual(response.status_code, 201)
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute(
+                "UPDATE reviews SET moderation_status = 'hidden' "
+                "WHERE review_id = %s",
+                (response.get_json()["review_id"],)
+            )
+            cursor.execute(
+                "SELECT reviewed_user_id FROM reviews WHERE review_id = %s",
+                (response.get_json()["review_id"],)
+            )
+            reviewed_user_id = cursor.fetchone()[0]
+            connection.commit()
+        finally:
+            cursor.close()
+            connection.close()
+
+        public = self.client.get(
+            f"/api/users/{reviewed_user_id}/reviews"
+        )
+        self.assertEqual(public.status_code, 200)
+        self.assertEqual(public.get_json()["review_count"], 0)
+        self.assertIsNone(public.get_json()["average_rating"])
+        self.assertEqual(public.get_json()["reviews"], [])
+
+
+    def test_61_volunteer_can_request_account_verification(self):
+        response = self.register_user(
+            "verification@test.com",
+            "volunteer"
+        )
+        self.assertEqual(response.status_code, 201)
+
+        self.login_user("verification@test.com")
+
+        response = self.post("/api/verifications", {
+            "verification_type": "account"
+        })
+
+        self.assertEqual(response.status_code, 201)
+        data = response.get_json()
+        self.assertEqual(data["status"], "pending")
+        self.assertIn("verification_id", data)
+
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        try:
+            cursor.execute("""
+                SELECT status, verification_type
+                FROM user_verifications
+                WHERE verification_id = %s
+            """, (data["verification_id"],))
+            saved = cursor.fetchone()
+
+            self.assertIsNotNone(saved)
+            self.assertEqual(saved["status"], "pending")
+            self.assertEqual(saved["verification_type"], "account")
+        finally:
+            cursor.close()
+            connection.close()
+
+
+    def test_62_duplicate_verification_request_blocked(self):
+        self.assertEqual(
+            self.register_user(
+                "duplicate-verification@test.com",
+                "volunteer"
+            ).status_code,
+            201
+        )
+
+        self.login_user("duplicate-verification@test.com")
+
+        first = self.post("/api/verifications", {
+            "verification_type": "account"
+        })
+        self.assertEqual(first.status_code, 201)
+
+        duplicate = self.post("/api/verifications", {
+            "verification_type": "account"
+        })
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(
+            duplicate.get_json()["status"],
+            "pending"
+        )
+
+
+    def test_63_invalid_verification_type_rejected(self):
+        self.assertEqual(
+            self.register_user(
+                "invalid-verification@test.com",
+                "volunteer"
+            ).status_code,
+            201
+        )
+
+        self.login_user("invalid-verification@test.com")
+
+        for verification_type in ["passport", "unknown", "", None]:
+            response = self.post("/api/verifications", {
+                "verification_type": verification_type
+            })
+            self.assertEqual(response.status_code, 400)
+
+
+    def test_64_user_can_view_own_verification_status(self):
+        self.assertEqual(
+            self.register_user(
+                "verification-status@test.com",
+                "volunteer"
+            ).status_code,
+            201
+        )
+
+        self.login_user("verification-status@test.com")
+
+        created = self.post("/api/verifications", {
+            "verification_type": "dbs"
+        })
+        self.assertEqual(created.status_code, 201)
+
+        response = self.client.get("/api/verifications/me")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["total"], 1)
+        self.assertEqual(
+            data["verifications"][0]["verification_type"],
+            "dbs"
+        )
+        self.assertEqual(
+            data["verifications"][0]["status"],
+            "pending"
+        )
+
+
+    def test_65_admin_can_approve_verification(self):
+        from werkzeug.security import generate_password_hash
+
+        self.assertEqual(
+            self.register_user("verify65@test.com", "volunteer").status_code,
+            201
+        )
+        self.assertEqual(self.login_user("verify65@test.com").status_code, 200)
+
+        response = self.post("/api/verifications", {
+            "verification_type": "account"
+        })
+        self.assertEqual(response.status_code, 201)
+        verification_id = response.get_json()["verification_id"]
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO users (
+                    first_name, last_name, email,
+                    password_hash, account_type, account_status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                "Test", "Admin", "admin65@test.com",
+                generate_password_hash("TestingPassword123!"),
+                "admin", "active"
+            ))
+            admin_id = cursor.lastrowid
+            connection.commit()
+        finally:
+            cursor.close()
+            connection.close()
+
+        self.assertEqual(self.login_user("admin65@test.com").status_code, 200)
+
+        response = self.patch(
+            f"/api/admin/verifications/{verification_id}/decision",
+            json={"status": "approved"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["status"], "approved")
+
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        try:
+            cursor.execute("""
+                SELECT status, reviewed_by, reviewed_at
+                FROM user_verifications
+                WHERE verification_id = %s
+            """, (verification_id,))
+            saved = cursor.fetchone()
+
+            self.assertEqual(saved["status"], "approved")
+            self.assertEqual(saved["reviewed_by"], admin_id)
+            self.assertIsNotNone(saved["reviewed_at"])
+        finally:
+            cursor.close()
+            connection.close()
+
+
+    def test_70_volunteer_cannot_list_admin_verifications(self):
+        response = self.register_user(
+            "verify70@test.com", "volunteer"
+        )
+        self.assertEqual(response.status_code, 201)
+
+        response = self.login_user("verify70@test.com")
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(
+            "/api/admin/verifications?status=pending"
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_69_admin_can_list_pending_verifications(self):
+        from werkzeug.security import generate_password_hash
+
+        self.assertEqual(
+            self.register_user("verify69@test.com", "volunteer").status_code,
+            201
+        )
+        self.assertEqual(self.login_user("verify69@test.com").status_code, 200)
+
+        response = self.post("/api/verifications", {
+            "verification_type": "account"
+        })
+        self.assertEqual(response.status_code, 201)
+        verification_id = response.get_json()["verification_id"]
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO users (
+                    first_name, last_name, email,
+                    password_hash, account_type, account_status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                "Test", "Admin", "admin69@test.com",
+                generate_password_hash("TestingPassword123!"),
+                "admin", "active"
+            ))
+            admin_id = cursor.lastrowid
+            connection.commit()
+        finally:
+            cursor.close()
+            connection.close()
+
+        self.assertEqual(self.login_user("admin69@test.com").status_code, 200)
+
+
+        response = self.client.get(
+            "/api/admin/verifications?status=pending"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.get_json()
+        self.assertGreaterEqual(data["total"], 1)
+
+        ids = [
+            item["verification_id"]
+            for item in data["verifications"]
+        ]
+
+        self.assertIn(verification_id, ids)
+
+        for item in data["verifications"]:
+            self.assertEqual(item["status"], "pending")
+
+    def test_68_admin_cannot_decide_twice(self):
+        from werkzeug.security import generate_password_hash
+
+        self.assertEqual(
+            self.register_user("verify68@test.com", "volunteer").status_code,
+            201
+        )
+        self.assertEqual(self.login_user("verify68@test.com").status_code, 200)
+
+        response = self.post("/api/verifications", {
+            "verification_type": "account"
+        })
+        self.assertEqual(response.status_code, 201)
+        verification_id = response.get_json()["verification_id"]
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO users (
+                    first_name, last_name, email,
+                    password_hash, account_type, account_status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                "Test", "Admin", "admin68@test.com",
+                generate_password_hash("TestingPassword123!"),
+                "admin", "active"
+            ))
+            admin_id = cursor.lastrowid
+            connection.commit()
+        finally:
+            cursor.close()
+            connection.close()
+
+        self.assertEqual(self.login_user("admin68@test.com").status_code, 200)
+
+        response = self.patch(
+            f"/api/admin/verifications/{verification_id}/decision",
+            json={"status": "approved"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["status"], "approved")
+
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        try:
+            cursor.execute("""
+                SELECT status, reviewed_by, reviewed_at
+                FROM user_verifications
+                WHERE verification_id = %s
+            """, (verification_id,))
+            saved = cursor.fetchone()
+
+            self.assertEqual(saved["status"], "approved")
+            self.assertEqual(saved["reviewed_by"], admin_id)
+            self.assertIsNotNone(saved["reviewed_at"])
+        finally:
+            cursor.close()
+            connection.close()
+
+        second_response = self.patch(
+            f"/api/admin/verifications/{verification_id}/decision",
+            {"status": "approved"}
+        )
+        self.assertEqual(second_response.status_code, 409)
+
+    def test_66_admin_can_reject_verification(self):
+        from werkzeug.security import generate_password_hash
+
+        self.assertEqual(
+            self.register_user("verify66@test.com", "volunteer").status_code,
+            201
+        )
+        self.assertEqual(self.login_user("verify66@test.com").status_code, 200)
+
+        response = self.post("/api/verifications", {
+            "verification_type": "account"
+        })
+        self.assertEqual(response.status_code, 201)
+        verification_id = response.get_json()["verification_id"]
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO users (
+                    first_name, last_name, email,
+                    password_hash, account_type, account_status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                "Test", "Admin", "admin66@test.com",
+                generate_password_hash("TestingPassword123!"),
+                "admin", "active"
+            ))
+            admin_id = cursor.lastrowid
+            connection.commit()
+        finally:
+            cursor.close()
+            connection.close()
+
+        self.assertEqual(self.login_user("admin66@test.com").status_code, 200)
+
+        response = self.patch(
+            f"/api/admin/verifications/{verification_id}/decision",
+            json={"status": "rejected"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["status"], "rejected")
+
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        try:
+            cursor.execute("""
+                SELECT status, reviewed_by, reviewed_at
+                FROM user_verifications
+                WHERE verification_id = %s
+            """, (verification_id,))
+            saved = cursor.fetchone()
+
+            self.assertEqual(saved["status"], "rejected")
+            self.assertEqual(saved["reviewed_by"], admin_id)
+            self.assertIsNotNone(saved["reviewed_at"])
+        finally:
+            cursor.close()
+            connection.close()
+
+
+    def test_67_volunteer_cannot_approve_verification(self):
+        self.assertEqual(
+            self.register_user("verify67@test.com", "volunteer").status_code,
+            201
+        )
+
+        self.assertEqual(
+            self.login_user("verify67@test.com").status_code,
+            200
+        )
+
+        created = self.post("/api/verifications", {
+            "verification_type": "account"
+        })
+        self.assertEqual(created.status_code, 201)
+
+        verification_id = created.get_json()["verification_id"]
+
+        response = self.patch(
+            f"/api/admin/verifications/{verification_id}/decision",
+            {"status": "approved"}
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute(
+                "SELECT status FROM user_verifications WHERE verification_id = %s",
+                (verification_id,)
+            )
+            self.assertEqual(cursor.fetchone()[0], "pending")
+        finally:
+            cursor.close()
+            connection.close()
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
