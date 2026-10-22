@@ -78,7 +78,12 @@ Possible errors:
 Public administrator registration is not permitted.
 
 Current development behaviour: new accounts are immediately
-activated. The verification workflow is not yet implemented.
+activated. Users can request account verification, and administrators
+can approve or reject verification requests.
+
+DBS verification is separate from account activation. Volunteers
+must have an approved DBS verification record before applying
+for tasks that require DBS.
 
 ## 4. Login
 
@@ -280,6 +285,7 @@ Request:
   "description": "Collect groceries from a local shop.",
   "category_id": 1,
   "delivery_mode": "in_person",
+  "visit_location_type": "public",
   "location_text": "Stratford",
   "estimated_minutes": 30,
   "deadline_at": "2030-12-01 15:00:00"
@@ -290,9 +296,19 @@ Required:
 - description
 - category_id
 - delivery_mode
+- visit_location_type
 - estimated_minutes
 
 For in_person tasks, location_text is also required.
+
+visit_location_type:
+- home: In-person visit to someone's home; DBS automatically required
+- public: In-person task at a public location
+- remote: Online task; must use delivery_mode remote
+
+Home visits automatically set requires_dbs to true, even if false
+is submitted. Volunteers need approved DBS verification to apply
+for tasks that require DBS.
 
 delivery_mode:
 - in_person
@@ -328,6 +344,14 @@ POST /api/tasks/{task_id}/apply
 Requires volunteer or both account.
 
 No JSON body required.
+
+DBS safeguarding:
+- Home visits automatically require approved DBS verification.
+- Volunteers without approved DBS verification cannot apply
+  for tasks where requires_dbs is true.
+- Public tasks do not require DBS by default.
+- The backend returns HTTP 403 if DBS verification is required
+  but the volunteer does not have approved status.
 
 Success: HTTP 201
 
@@ -508,13 +532,19 @@ Application: completed
 ## 16. Current V1 Limitations
 
 The following features are not yet implemented:
-- Email/account verification workflow
-- Reviews and ratings
+- Automated email verification
 - Messaging
 - Notifications
 
-The frontend should not depend on these features until
-the backend endpoints have been implemented and tested.
+Implemented backend features include:
+- Account verification requests and administrator decisions
+- DBS verification status checks for protected tasks
+- Reviews and ratings
+- Administrator review moderation
+
+The frontend should not depend on the features listed
+as not yet implemented until their backend functionality
+has been developed and tested.
 
 
 
