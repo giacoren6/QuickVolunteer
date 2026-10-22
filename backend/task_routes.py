@@ -522,7 +522,7 @@ def decide_application(application_id):
             return jsonify({"error": "Permission denied"}), 403
 
         cursor.execute("""
-            SELECT application_id, status
+            SELECT application_id, volunteer_id, status
             FROM task_applications
             WHERE application_id = %s AND task_id = %s
             FOR UPDATE
@@ -578,6 +578,53 @@ def decide_application(application_id):
                 SET status = 'rejected'
                 WHERE application_id = %s
             """, (application_id,))
+
+        # Notify the volunteer whose application was reviewed.
+        cursor.execute("""
+            INSERT INTO notifications
+                (user_id, task_application_id, title, content)
+            VALUES (%s, %s, %s, %s)
+        """, (
+            application["volunteer_id"],
+            application_id,
+            "Application " + decision.capitalize(),
+            "Your volunteer application has been " + decision + "."
+        ))
+
+        if decision == "accepted":
+            # Notify applicants automatically rejected when the task was filled.
+            cursor.execute("""
+                INSERT INTO notifications
+                    (user_id, task_application_id, title, content)
+                SELECT
+                    volunteer_id,
+                    application_id,
+                    'Application Rejected',
+                    'Your volunteer application has been rejected.'
+                FROM task_applications
+                WHERE task_id = %s
+                  AND application_id <> %s
+                  AND status = 'rejected'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM notifications n
+                      WHERE n.task_application_id =
+                            task_applications.application_id
+                        AND n.title = 'Application Rejected'
+                  )
+            """, (task_id, application_id))
+
+        # Record the application decision in the audit log.
+        cursor.execute("""
+            INSERT INTO audit_logs
+                (actor_id, action, entity_type, entity_id)
+            VALUES (%s, %s, %s, %s)
+        """, (
+            session["user_id"],
+            "application_" + decision,
+            "task_application",
+            application_id
+        ))
 
         connection.commit()
 

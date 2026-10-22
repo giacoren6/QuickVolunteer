@@ -12,6 +12,8 @@ from admin_routes import admin_bp
 from skills_routes import skills_bp
 from review_routes import review_bp
 from verification_routes import verification_bp
+from messaging_routes import messaging_bp
+from notification_routes import notification_bp
 
 
 # ==========================================
@@ -49,6 +51,8 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(skills_bp)
 app.register_blueprint(review_bp)
 app.register_blueprint(verification_bp)
+app.register_blueprint(messaging_bp)
+app.register_blueprint(notification_bp)
 
 csrf = CSRFProtect(app)
 

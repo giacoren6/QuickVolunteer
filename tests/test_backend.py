@@ -34,6 +34,11 @@ class QuickVolunteerTests(unittest.TestCase):
         cursor = connection.cursor()
 
         try:
+            cursor.execute("DELETE FROM notifications")
+            cursor.execute("DELETE FROM audit_logs")
+            cursor.execute("DELETE FROM messages")
+            cursor.execute("DELETE FROM conversation_members")
+            cursor.execute("DELETE FROM conversations")
             cursor.execute("DELETE FROM task_skills")
             cursor.execute("DELETE FROM user_skills")
             cursor.execute("DELETE FROM reviews")
