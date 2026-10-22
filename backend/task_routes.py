@@ -52,6 +52,8 @@ def my_tasks():
                 t.description,
                 t.location_text,
                 t.delivery_mode,
+                t.visit_location_type,
+                t.requires_dbs,
                 t.estimated_minutes,
                 t.deadline_at,
                 t.status,
@@ -111,6 +113,8 @@ def my_applications():
                 t.description,
                 t.delivery_mode,
                 t.location_text,
+                t.visit_location_type,
+                t.requires_dbs,
                 t.estimated_minutes,
                 t.deadline_at,
                 t.status AS task_status,
@@ -165,6 +169,8 @@ def create_task():
     description = data.get("description")
     category_id = data.get("category_id")
     delivery_mode = data.get("delivery_mode")
+    visit_location_type = data.get("visit_location_type")
+    requires_dbs = data.get("requires_dbs", False)
     estimated_minutes = data.get("estimated_minutes")
     deadline_at = data.get("deadline_at")
     location_text = data.get("location_text")
@@ -180,6 +186,26 @@ def create_task():
 
     if delivery_mode not in ("remote", "in_person"):
         return jsonify({"error": "Invalid delivery mode"}), 400
+
+    if visit_location_type not in ("home", "public", "remote"):
+        return jsonify({"error": "Valid visit location type required"}), 400
+
+    if delivery_mode == "remote" and visit_location_type != "remote":
+        return jsonify({"error": "Remote tasks must use remote location type"}), 400
+
+    if delivery_mode == "in_person" and visit_location_type == "remote":
+        return jsonify({"error": "In-person tasks require home or public location"}), 400
+
+    if type(requires_dbs) is not bool:
+        return jsonify({"error": "requires_dbs must be true or false"}), 400
+
+    if visit_location_type == "home":
+        requires_dbs = True
+
+    if delivery_mode == "remote" and requires_dbs:
+        return jsonify({
+            "error": "Remote tasks cannot require DBS verification"
+        }), 400
 
     if delivery_mode == "in_person":
         if not isinstance(location_text, str) or not location_text.strip():
@@ -236,11 +262,13 @@ def create_task():
                 description,
                 location_text,
                 delivery_mode,
+                visit_location_type,
+                requires_dbs,
                 estimated_minutes,
                 deadline_at,
                 status
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open')
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open')
         """, (
             session["user_id"],
             category_id,
@@ -248,6 +276,8 @@ def create_task():
             description.strip(),
             location_text.strip() if isinstance(location_text, str) else None,
             delivery_mode,
+            visit_location_type,
+            requires_dbs,
             estimated_minutes,
             deadline,
         ))
@@ -285,7 +315,7 @@ def apply_for_task(task_id):
         connection.start_transaction()
 
         cursor.execute("""
-            SELECT task_id, creator_id, status, deadline_at
+            SELECT task_id, creator_id, status, deadline_at, delivery_mode, requires_dbs
             FROM tasks
             WHERE task_id = %s
             FOR UPDATE
@@ -307,6 +337,21 @@ def apply_for_task(task_id):
             return jsonify({
                 "error": "Cannot apply for your own task"
             }), 403
+
+        if task["requires_dbs"]:
+            cursor.execute("""
+                SELECT verification_id
+                FROM user_verifications
+                WHERE user_id = %s
+                  AND verification_type = 'dbs'
+                  AND status = 'approved'
+                LIMIT 1
+            """, (volunteer_id,))
+
+            if cursor.fetchone() is None:
+                return jsonify({
+                    "error": "Approved DBS verification required for in-person tasks"
+                }), 403
 
         cursor.execute("""
             SELECT application_id

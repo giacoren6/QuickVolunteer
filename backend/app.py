@@ -68,6 +68,8 @@ def fetch_open_tasks():
                 t.title,
                 t.description,
                 t.delivery_mode,
+                t.visit_location_type,
+                t.requires_dbs,
                 t.estimated_minutes,
                 t.location_text,
                 t.status,

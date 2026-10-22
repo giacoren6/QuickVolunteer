@@ -50,6 +50,8 @@ CREATE TABLE tasks (
     description TEXT NOT NULL,
     location_text VARCHAR(160),
     delivery_mode ENUM('in_person', 'remote') NOT NULL,
+    visit_location_type ENUM('home', 'public', 'remote'),
+    requires_dbs BOOLEAN NOT NULL DEFAULT FALSE,
     estimated_minutes SMALLINT UNSIGNED NOT NULL,
     deadline_at DATETIME,
     status ENUM('open', 'filled', 'completed', 'closed')

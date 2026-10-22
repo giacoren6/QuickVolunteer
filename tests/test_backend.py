@@ -118,6 +118,7 @@ class QuickVolunteerTests(unittest.TestCase):
             "description": "Collect groceries from a local shop.",
             "category_id": 1,
             "delivery_mode": "in_person",
+            "visit_location_type": "public",
             "location_text": "Stratford",
             "estimated_minutes": 30,
             "deadline_at": "2030-12-01 15:00:00"
@@ -152,6 +153,99 @@ class QuickVolunteerTests(unittest.TestCase):
         application_id = response.get_json()["application_id"]
 
         return task_id, application_id
+
+    def test_71_unapproved_dbs_blocks_protected_task(self):
+        self.assertEqual(
+            self.register_user("seeker@test.com", "help_seeker").status_code,
+            201
+        )
+        self.assertEqual(
+            self.register_user("volunteer@test.com", "volunteer").status_code,
+            201
+        )
+
+        self.assertEqual(
+            self.login_user("seeker@test.com").status_code,
+            200
+        )
+
+        response = self.post("/api/tasks", {
+            "title": "Help at home",
+            "description": "Help organise items at home.",
+            "category_id": 1,
+            "delivery_mode": "in_person",
+            "visit_location_type": "home",
+            "requires_dbs": False,
+            "location_text": "Stratford",
+            "estimated_minutes": 30
+        })
+
+        self.assertEqual(response.status_code, 201)
+        task_id = response.get_json()["task_id"]
+
+        self.assertEqual(
+            self.login_user("volunteer@test.com").status_code,
+            200
+        )
+
+        response = self.post(f"/api/tasks/{task_id}/apply")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("DBS", response.get_json()["error"])
+
+    def test_72_approved_dbs_allows_protected_task(self):
+        self.assertEqual(
+            self.register_user("seeker@test.com", "help_seeker").status_code,
+            201
+        )
+        self.assertEqual(
+            self.register_user("volunteer@test.com", "volunteer").status_code,
+            201
+        )
+
+        self.assertEqual(
+            self.login_user("seeker@test.com").status_code,
+            200
+        )
+
+        response = self.post("/api/tasks", {
+            "title": "Help at home",
+            "description": "Help organise items at home.",
+            "category_id": 1,
+            "delivery_mode": "in_person",
+            "visit_location_type": "home",
+            "requires_dbs": False,
+            "location_text": "Stratford",
+            "estimated_minutes": 30
+        })
+
+        self.assertEqual(response.status_code, 201)
+        task_id = response.get_json()["task_id"]
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO user_verifications (
+                    user_id, verification_type, status
+                )
+                SELECT user_id, 'dbs', 'approved'
+                FROM users
+                WHERE email = %s
+            """, ("volunteer@test.com",))
+            connection.commit()
+        finally:
+            cursor.close()
+            connection.close()
+
+        self.assertEqual(
+            self.login_user("volunteer@test.com").status_code,
+            200
+        )
+
+        response = self.post(f"/api/tasks/{task_id}/apply")
+        self.assertEqual(response.status_code, 201)
 
     def accept_application(self, application_id):
         self.assertEqual(
